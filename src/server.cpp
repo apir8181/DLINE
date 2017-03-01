@@ -18,6 +18,7 @@
 namespace multiverso {
 
 MV_DEFINE_bool(sync, false, "sync or async");
+MV_DEFINE_int(basync_clock, 3, "max tolerance clock for bounded async server");
 MV_DEFINE_int(backup_worker_ratio, 0, "ratio% of backup workers, set 20 means 20%");
 
 Server::Server() : Actor(actor::kServer) {
@@ -219,6 +220,110 @@ private:
 
   MtQueue<MessagePtr> msg_add_cache_;
   MtQueue<MessagePtr> msg_get_cache_;
+};
+
+// The BoundedAsyncServer implement logic to support Async SGD training.
+// This server assumes:
+// - All workers follow blocking Get - Train - Add procedure.
+// - A worker can only request a Get or Add at a time.
+// - All workers have the same number of iterations.
+// The server satisfying the following rules:
+// - All workers have a corresponding clock with initial value of 0.
+// - When a worker i commits an ADD, it will step its corresponding clock.
+//   That is clock[i] += 1.
+// - The slowest and fastest workers must be <= MV_CONFIG_basync_clock
+//   apart.
+// The following condition are promised:
+// - A worker Get will see effects of its own Add.
+// - A worker Get with clock[i] will see effects of other workers Add 
+//   with clock < clock[i] - MV_CONFIG_basync_clock.
+// - A worker Get with clock[i] may see effects of other workers Add
+//   with clock >= clock[i] - MV_CONFIG_basync_clock.
+class BoundedAsyncServer : public Server {
+public:
+  BoundedAsyncServer() : Server() {
+    RegisterHandler(MsgType::Server_Finish_Train, std::bind(
+      &BoundedAsyncServer::ProcessFinishTrain, this, std::placeholders::_1));
+    num_workers_ = Zoo::Get()->num_workers();
+    finish_ = false;
+    clocks_.resize(num_workers_, 0);
+  }
+
+protected:
+  void ProcessAdd(MessagePtr& msg) override {
+    CHECK(!finish_);
+    PrintClock();
+    msg_cache_.Push(msg);
+    ProcessQueue();
+    PrintClock();
+  }
+
+  void ProcessGet(MessagePtr& msg) override {
+    CHECK(!finish_);
+    PrintClock();
+    msg_cache_.Push(msg);
+    ProcessQueue();
+    PrintClock();
+  }
+
+  void ProcessFinishTrain(MessagePtr& msg) {
+    ProcessQueue();
+    CHECK(msg_cache_.Size() == 0);
+  }
+
+private:
+  int num_workers_;
+  bool finish_;
+  std::vector<int> clocks_;
+  MtQueue<MessagePtr> msg_cache_;
+
+  void PrintClock() {
+    std::string rank = "Rank :" + std::to_string(MV_Rank());
+    std::string os = rank + " clock, local: ";
+    for (auto i : clocks_) { 
+      if (i == std::numeric_limits<int>::max()) os += "-1 ";
+      else os += std::to_string(i) + " ";
+    }
+    Log::Debug("%s\n", os.c_str());
+  }
+
+  void ProcessQueue() {
+    bool changed = true;
+    while (changed && msg_cache_.Size() > 0) {
+      changed = false;
+
+      for (int i = 0, size = msg_cache_.Size(); i < size; ++ i) {
+        MessagePtr msg;
+        msg_cache_.Pop(msg);
+
+        int worker = Zoo::Get()->rank_to_worker_id(msg->src());
+        int min_clock = clocks_[worker];
+        for (auto val: clocks_) min_clock = std::min(min_clock, val);
+
+        if (msg->type() == Request_Get) {
+          if (clocks_[worker] > min_clock + MV_CONFIG_basync_clock) {
+            msg_cache_.Push(msg);
+          } else {
+            Server::ProcessGet(msg);
+            changed = true;
+          }
+        } else if (msg->type() == Request_Add) {
+          if (clocks_[worker] >= min_clock + MV_CONFIG_basync_clock) {
+            msg_cache_.Push(msg);
+          } else {
+            Server::ProcessAdd(msg);
+            ++ clocks_[worker];
+            changed = true;
+          }
+        } else {
+          Log::Fatal("Server received unsupported message type %d\n",
+            msg->type());
+        }
+
+      } // end for
+
+    } // end while
+  }
 };
 
 Server* Server::GetServer() {

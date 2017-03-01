@@ -29,6 +29,7 @@ ADD_SUBDIRECTORY(Test)
 ADD_SUBDIRECTORY(Test/unittests)
 ADD_SUBDIRECTORY(Applications/WordEmbedding)
 ADD_SUBDIRECTORY(Applications/LogisticRegression)
+ADD_SUBDIRECTORY(Applications/GE)
 
 if(USE_INSTALL_MULTIVERSO)
     install (DIRECTORY ${PROJECT_SOURCE_DIR}/include/multiverso DESTINATION include)

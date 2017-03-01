@@ -342,7 +342,7 @@ void MatrixWorkerTable<T>::ProcessReplyGet(std::vector<Blob>& reply_data) {
 
 template <typename T>
 MatrixServerTable<T>::MatrixServerTable(const MatrixTableOption<T>& option) :
-MatrixServerTable(option.num_row, option.num_col) {}
+MatrixServerTable(option.num_row, option.num_col, option.min_value, option.max_value) {}
 
 template <typename T>
 MatrixServerTable<T>::MatrixServerTable(integer_t num_row, integer_t num_col) :

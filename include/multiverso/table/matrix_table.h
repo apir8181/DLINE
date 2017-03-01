@@ -120,9 +120,14 @@ protected:
 
 template <typename T>
 struct MatrixTableOption {
-  MatrixTableOption(integer_t num_row, integer_t num_col):num_row(num_row), num_col(num_col){}
+  MatrixTableOption(integer_t num_row, integer_t num_col, 
+    float min_value=0, float max_value=0) : 
+      num_row(num_row), num_col(num_col), 
+      min_value(min_value), max_value(max_value) {}
   integer_t num_row;
   integer_t num_col;
+  float min_value;
+  float max_value;
   DEFINE_TABLE_TYPE(T, MatrixWorkerTable, MatrixServerTable);
 };
 

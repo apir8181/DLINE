@@ -3,6 +3,7 @@
 #include <chrono>
 #include <string>
 #include <thread>
+#include <pthread.h>
 
 #include "multiverso/message.h"
 #include "multiverso/util/log.h"
@@ -21,6 +22,8 @@ Actor::~Actor() {}
 
 void Actor::Start() {
   thread_.reset(new std::thread(&Actor::Main, this));
+  pthread_setname_np(thread_->native_handle(), name_.c_str());
+
   while (!is_working_) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
