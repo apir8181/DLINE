@@ -17,13 +17,16 @@ Dictionary::~Dictionary() {
 }
 
 void Dictionary::Initialization() {
+    int rank = multiverso::MV_Rank();
+    int worker_id = multiverso::MV_WorkerId();
+
     FILE* pFILE = fopen(option_->dict_file, "r");
     if (pFILE == NULL) {
-        multiverso::Log::Fatal("Rank %d can't open file %s\n",
-            multiverso::MV_Rank(), option_->dict_file);
+        multiverso::Log::Fatal("Rank %d (Worker %d) can't open file %s\n",
+            rank, worker_id, option_->dict_file);
     } 
-    multiverso::Log::Info("Rank %d reading dictionary %s\n",
-        multiverso::MV_Rank(), option_->dict_file);
+    multiverso::Log::Info("Rank %d (Worker %d) reading dictionary %s\n",
+        rank, worker_id, option_->dict_file);
 
     std::vector<real> node_degree;
     integer id;
@@ -35,8 +38,8 @@ void Dictionary::Initialization() {
     fclose(pFILE);
 
     if (node_degree.size() == 0) {
-        multiverso::Log::Fatal("Rank %d dictionary file %s empty\n",
-            multiverso::MV_Rank(), option_->dict_file);
+        multiverso::Log::Fatal("Rank %d (Worker %d) dictionary file %s empty\n",
+            rank, worker_id, option_->dict_file);
     }
 
     alias_method_ = new (std::nothrow)AliasMethod(node_degree);
