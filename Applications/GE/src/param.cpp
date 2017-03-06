@@ -51,7 +51,7 @@ DotProdParam* DotProdParam::FromBlob(const multiverso::Blob& blob) {
     blob_data += sizeof(int);
 
     param->K = reinterpret_cast<int*>(blob_data)[0];
-    int dst_nodes = param->K * src_nodes;
+    int dst_nodes = (param->K + 1) * src_nodes;
     blob_data += sizeof(int);
 
     param->src.resize(src_nodes);
@@ -152,7 +152,7 @@ AdjustParam* AdjustParam::FromBlob(const multiverso::Blob& blob) {
     memcpy(param->src.data(), blob_data, src_nodes * sizeof(integer));
     blob_data += src_nodes * sizeof(integer);
 
-    int dst_nodes = param->K * src_nodes;
+    int dst_nodes = (param->K + 1) * src_nodes;
     param->dst.resize(dst_nodes);
     memcpy(param->dst.data(), blob_data, dst_nodes * sizeof(integer));
     blob_data += dst_nodes * sizeof(integer);
