@@ -186,8 +186,8 @@ void ColumnMatrixServerTable<T>::ProcessGet(
                 int idx = i * (K + 1) + k; 
                 size_t dst_offset = size_t(param->dst[idx]) * num_cols_local_;
                 for (int j = 0; j < num_cols_local_; ++ j) {
-                    DW_IN_[src_offset + j] += param->scale[i] * W_OUT_[dst_offset + j];
-                    DW_OUT_[dst_offset + j] += param->scale[i] * W_IN_[src_offset + j];
+                    DW_IN_[src_offset + j] += param->scale[idx] * W_OUT_[dst_offset + j];
+                    DW_OUT_[dst_offset + j] += param->scale[idx] * W_IN_[src_offset + j];
                 }
             }
         }
