@@ -192,6 +192,24 @@ void ColumnMatrixServerTable<T>::ProcessGet(
             }
         }
 
+        #pragma omp parallel for num_threads(num_threads_)
+        for (int i = 0; i < src_nodes + dst_nodes; ++ i) {
+            if (i < src_nodes) {
+                size_t offset = size_t(param->src[i]) * num_cols_local_;
+                for (int j = 0; j < num_cols_local_; ++ j) {
+                    W_IN_[offset + j] += DW_IN_[offset + j];
+                    DW_IN_[offset + j] = 0;
+                }
+            } else {
+                size_t offset = size_t(param->dst[i - src_nodes]) * num_cols_local_;
+                for (int j = 0; j < num_cols_local_; ++ j) {
+                    W_OUT_[offset + j] += DW_OUT_[offset + j];
+                    DW_OUT_[offset + j] = 0;
+                }
+            }
+        }
+
+        /*
         std::vector<integer> src_unique = param->src;
         std::vector<integer> dst_unique = param->dst;
         SortEraseDuplicate(src_unique);
@@ -216,6 +234,7 @@ void ColumnMatrixServerTable<T>::ProcessGet(
                 DW_OUT_[offset + j] = 0;
             }
         }
+        */
 
         Blob blob(sizeof(int));
         reinterpret_cast<int*>(blob.data())[0] = (int)Op::ADJUST;
