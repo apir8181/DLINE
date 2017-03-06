@@ -87,7 +87,7 @@ void ColumnMatrixWorkerTable<T>::ProcessReplyGet(std::vector<Blob>& reply_data) 
         int num_elems = result->W.size();
         int num_rows = num_elems / result->cols_own;
         for (size_t i = 0; i < num_rows; ++ i) {
-            size_t src_offset = i * result->cols_offset;
+            size_t src_offset = i * result->cols_own;
             size_t dst_offset = i * num_cols_ + result->cols_offset;
             memcpy(get_result_->W.data() + dst_offset, result->W.data() + src_offset, 
                    result->cols_own * sizeof(real));
