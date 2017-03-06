@@ -1,6 +1,7 @@
 #ifndef GE_MODEL_H
 #define GE_MODEL_H
 
+#include "host_rule.h"
 #include "column_matrix_table.h"
 #include "constant.h"
 #include "dictionary.h"
@@ -29,6 +30,7 @@ private:
             DotProdParam* param, DotProdResult* result, real& loss);
 
     int rank_, worker_id_, server_id_;
+    HostRule* host_rule_;
     ColumnMatrixWorkerTable<real>* table_;
     Dictionary* dict_;
     GraphPartition* graph_partition_;

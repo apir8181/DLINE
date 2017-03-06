@@ -13,12 +13,13 @@ namespace graphembedding {
 struct Option {
     const char* graph_part_file;
     const char* dict_file;
+    const char* rule_file;
     const char* output_file;
     int embedding_size, negative_num;
     integer num_nodes;
     integerL sample_edges, block_num_edges;
     real init_learning_rate;
-    int server_threads;
+    int display_iter, server_threads;
     bool debug;
 
     Option();

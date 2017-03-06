@@ -1,5 +1,5 @@
 #include <cassert>
-#include <algorithm>
+#include <random>
 #include <multiverso/multiverso.h>
 #include <multiverso/util/log.h>
 #include "graph_partition.h"
@@ -10,7 +10,6 @@ GraphPartition::GraphPartition(const Option* o) : option_(o) {
     file_path_ = option_->graph_part_file;
     rank_ = multiverso::MV_Rank();
     worker_id_ = multiverso::MV_WorkerId();
-    //file_path_ += "_part_" + std::to_string(worker_id_);
 
     pFILE_ = fopen(file_path_.c_str(), "r");
     if (pFILE_ == NULL) {
@@ -21,6 +20,7 @@ GraphPartition::GraphPartition(const Option* o) : option_(o) {
             rank_, worker_id_, file_path_.c_str());
     }
 
+    // count number of edges in file
     edges_in_file_ = 0;
     multiverso::Log::Info("Rank %d (Worker %d) counting number of edges\n",
         rank_, worker_id_);
@@ -32,7 +32,15 @@ GraphPartition::GraphPartition(const Option* o) : option_(o) {
     multiverso::Log::Info("Rank %d (Worker %d) contains %lld edges\n",
         rank_, worker_id_, edges_in_file_);
     assert(edges_in_file_ != 0);
+
+    // randomly choose a start location
     ResetStream();
+    std::mt19937_64 gen(worker_id_);
+    std::uniform_real_distribution<real> dist;
+    integerL start = integerL(dist(gen) * edges_in_file_);
+    for (integerL i = 0; i < start; ++ i) {
+        fscanf(pFILE_, "%d %d %f", &a, &b, &w);
+    }
 
     edges_remained_ = option_->sample_edges;
 }

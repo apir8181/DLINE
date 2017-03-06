@@ -10,12 +10,14 @@
 namespace graphembedding {
 
 Model::Model(Option* option) : option_(option) {
+    host_rule_ = NULL;
     table_ = NULL;
     dict_ = NULL;
     graph_partition_ = NULL;
 }
 
 Model::~Model() {
+    if (host_rule_ != NULL) delete host_rule_;
     if (table_ != NULL) delete table_;
     if (dict_ != NULL) delete dict_;
     if (graph_partition_ != NULL) delete graph_partition_;
@@ -26,6 +28,12 @@ void Model::Init() {
     if (option_->debug) {
         multiverso::Log::ResetLogLevel(multiverso::LogLevel::Debug);
     }
+
+    // set rule
+    host_rule_ = new HostRule(option_);
+    multiverso::MV_SetFlag<std::string>("ps_role", host_rule_->GetRule());
+    multiverso::Log::Info("Host %s rule %s\n", 
+        host_rule_->GetLocalHostName(), host_rule_->GetRule());
 
     int argc = 1;
     multiverso::MV_Init(&argc, NULL);
@@ -85,9 +93,11 @@ void Model::Train() {
         edge_processed += edges_readed;
         block_processed += 1;
 
-        real progress = std::min(1.0f, (real)edge_processed / option_->sample_edges);
-        multiverso::Log::Info("Rank %d (Worker %d) Iter %d, loss %f, progress %f\n",
-            rank_, worker_id_, block_processed, loss, progress); 
+        if (block_processed % option_->display_iter == 0) {
+            real progress = std::min(1.0f, (real)edge_processed / option_->sample_edges);
+            multiverso::Log::Info("Rank %d (Worker %d, Host %s) Iter %d, loss %f, progress %f\n",
+                rank_, worker_id_, host_rule_->GetLocalHostName(), block_processed, loss, progress); 
+        }
     }
     
     multiverso::Log::Info("Rank %d train finished\n", multiverso::MV_Rank());
@@ -95,59 +105,42 @@ void Model::Train() {
 }
 
 void Model::Save() {
-    /*
-    if (multiverso::MV_ServerId() == -1) return;
-    
-    multiverso::Log::Info("Rank %d saving parameters\n", multiverso::MV_Rank());
-    integer row_offset, size;
-    size = option_->num_nodes / multiverso::MV_NumServers();
-    int server_id = multiverso::MV_ServerId();
-    if (size > 0) {
-        row_offset = size * server_id;
-        if (server_id == multiverso::MV_NumServers() - 1) {
-            size = option_->num_nodes - row_offset;
+    if (worker_id_ == 0) {
+        multiverso::Log::Info("Saving vectors %s@%s\n",
+            host_rule_->GetLocalHostName(), option_->output_file);
+        FILE* pFILE = fopen(option_->output_file, "w");
+        if (pFILE == NULL) {
+            multiverso::Log::Fatal("Rank %d can't save to file %s\n",
+                rank_, option_->output_file);
         }
-    } else {
-        size = server_id < option_->num_nodes ? 1 : 0;
-        row_offset = server_id;
-    }
 
-    std::stringstream ss;
-    ss << option_->output_file << "_part_" << multiverso::MV_Rank();
-    std::ofstream fs(ss.str());
-    if (!fs.is_open()) {
-        multiverso::Log::Fatal("Rank %d can't open output file %s\n",
-            multiverso::MV_Rank(), option_->output_file);
-    }
+        integer BATCH_SIZE = 1e4;
+        int N = option_->num_nodes, D = option_->embedding_size;
+        fprintf(pFILE, "%d %d\n", N, D);
+        for (integer i = 0; i < N; i += BATCH_SIZE) {
+            int next_size = i + BATCH_SIZE <= N ? BATCH_SIZE : N - i;
 
-    const integer BATCH_SIZE = 100000;
-    real* buffer = new (std::nothrow)real[BATCH_SIZE * option_->embedding_size];
-    assert(buffer != NULL);
-    std::vector<integer> nodes;
-    std::vector<real*> vecs;
-    for (integer i = 0; i < size; i += BATCH_SIZE) {
-        integer remain_size = i + BATCH_SIZE <= size ? BATCH_SIZE : size - i;
-        // request local parameter
-        nodes.resize(remain_size);
-        vecs.resize(remain_size);
-        for (integer j = 0; j < remain_size; ++ j) {
-            nodes[j] = row_offset + i + j;
-            vecs[j] = &buffer[j * option_->embedding_size];
-        }
-        communicator_->RequestParameterWI(nodes, vecs);
-        // save local parameter
-        for (integer j = 0; j < remain_size; ++ j) {
-            fs << row_offset + i + j;
-            real* x = vecs[i + j];
-            for (int k = 0; k < option_->embedding_size; ++ k) {
-                fs << ' ' << x[k];
+            // request get
+            GetParam* param = new GetParam();
+            for (int j = 0; j < next_size; ++ j) {
+                param->src.push_back(i + j);
             }
-            fs << '\n';
+            GetResult* result = table_->Get(param);
+
+            for (int j = 0; j < next_size; ++ j) {
+                fprintf(pFILE, "%d", i + j);
+                for (int k = 0; k < D; ++ k) {
+                    fprintf(pFILE, " %f", result->W[j * D + k]);
+                }
+                fprintf(pFILE, "\n");
+            }
+
+            delete param;
+            delete result;
         }
+        fclose(pFILE);
     }
-    delete buffer;
-    fs.close();
-    */
+    multiverso::MV_Barrier();
 }
 
 DotProdParam* Model::GetDotProdParam(std::vector<Edge>& edges, int size) {
@@ -194,6 +187,11 @@ AdjustParam* Model::GetAdjustParam(std::vector<Edge>& edges, real lr,
         }
     }
     loss = total_loss / num_edges / (1 + option_->negative_num);
+
+    param->src_unique = param->src;
+    param->dst_unique = param->dst;
+    SortEraseDuplicate(param->src_unique);
+    SortEraseDuplicate(param->dst_unique);
 
     return param;
 }
