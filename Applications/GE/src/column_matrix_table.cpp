@@ -28,7 +28,7 @@ DotProdResult* ColumnMatrixWorkerTable<T>::DotProd(DotProdParam* param) {
     dotprod_result_ = new DotProdResult();
     dotprod_result_->scale.resize(param->dst.size(), 0);
     WorkerTable::Get(blob, NULL);
-    multiverso::Log::Debug("[DotProd] Rank %d (Worker = %d), num_edges = %d\n",
+    multiverso::Log::Debug("[DotProd] Rank %d (Worker = %d), num_edges=%d\n",
         rank_, worker_id_, param->dst.size());
     return dotprod_result_;
 }
@@ -38,7 +38,7 @@ void ColumnMatrixWorkerTable<T>::Adjust(AdjustParam* param) {
     std::lock_guard<std::mutex> lock(mutex_);
     Blob blob = param->ToBlob();
     WorkerTable::Get(blob, NULL);
-    multiverso::Log::Debug("[Adjust] Rank %d (Worker = %d), num_edges = %d\n",
+    multiverso::Log::Debug("[Adjust] Rank %d (Worker = %d), num_edges=%d\n",
         rank_, worker_id_, param->dst.size());
 }
 
@@ -49,7 +49,7 @@ GetResult* ColumnMatrixWorkerTable<T>::Get(GetParam* param) {
     get_result_ = new GetResult();
     get_result_->W.resize(param->src.size() * num_cols_);
     WorkerTable::Get(blob, NULL);
-    multiverso::Log::Debug("[Get] Rank %d (Worker = %d), num_nodes = %d\n",
+    multiverso::Log::Debug("[Get] Rank %d (Worker = %d), num_nodes=%d\n",
         rank_, worker_id_, param->src.size());
     return get_result_;
 }
@@ -79,7 +79,7 @@ void ColumnMatrixWorkerTable<T>::ProcessReplyGet(std::vector<Blob>& reply_data) 
         }
         delete result;
         multiverso::Log::Debug("[ProcessDotProd] Rank %d (Worker %d), "
-            "#num_edges = %d\n", rank_, worker_id_, num_elems);
+            "#num_edges=%d\n", rank_, worker_id_, num_elems);
     } else if (type == Op::ADJUST) {
         multiverso::Log::Debug("[ProcessAdjust] Rank %d (Worker %d)\n", rank_, worker_id_);
     } else if (type == Op::GET) {
@@ -94,7 +94,7 @@ void ColumnMatrixWorkerTable<T>::ProcessReplyGet(std::vector<Blob>& reply_data) 
         }
         delete result;
         multiverso::Log::Debug("[ProcessGet] Rank %d (Worker %d), "
-            "#num_nodes = %lld\n", rank_, worker_id_, num_rows);
+            "#num_nodes=%d\n", rank_, worker_id_, num_rows);
     }
 }
 
@@ -131,7 +131,7 @@ ColumnMatrixServerTable<T>::ColumnMatrixServerTable(
     }
 
     multiverso::Log::Info("[Init] Rank %d (Server %d), type = ColumnMatrixTable,"
-        " size = [%lld x %lld], local size = [%lld x %lld]\n",
+        " size = [%d x %d], local size = [%d x %d]\n",
         rank_, server_id_, num_rows_, num_cols_, num_rows_, num_cols_local_);
 }
 
@@ -243,6 +243,8 @@ void ColumnMatrixServerTable<T>::ProcessGet(
 
         result->push_back(ret.ToBlob());
         delete param;
+        multiverso::Log::Debug("[ProcessGet] Rank %d (Server %d), #num_nodes=%d\n",
+            rank_, server_id_, num_nodes);
     }
 }
 
