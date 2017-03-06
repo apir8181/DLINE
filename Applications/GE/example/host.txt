@@ -1,0 +1,7 @@
+pc51 slots=1
+pc52 slots=1
+pc57 slots=4
+pc61 slots=4
+pc63 slots=4
+pc53 slots=4
+pc54 slots=4
