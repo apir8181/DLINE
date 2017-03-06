@@ -151,7 +151,6 @@ DotProdParam* Model::GetDotProdParam(std::vector<Edge>& edges, int size) {
         param->src.push_back(edge.src);
         param->dst.push_back(edge.dst);
         for (int j = 0; j < option_->negative_num; ++ j) {
-            param->src.push_back(edge.src);
             integer neg = edge.dst;
             while (neg == edge.dst) {
                 neg = dict_->Sample(gen_);
@@ -164,14 +163,15 @@ DotProdParam* Model::GetDotProdParam(std::vector<Edge>& edges, int size) {
 
 AdjustParam* Model::GetAdjustParam(std::vector<Edge>& edges, real lr, 
         DotProdParam* dotprod_param, DotProdResult* dotprod_result, real& loss) {
-    assert(dotprod_param->src.size() == dotprod_result->scale.size());
-    assert(dotprod_param->src.size() / (1 + option_->negative_num) == edges.size());
+    assert(dotprod_param->dst.size() == dotprod_result->scale.size());
+    assert(dotprod_param->dst.size() / (1 + option_->negative_num) == edges.size());
     AdjustParam* param = new (std::nothrow)AdjustParam();
     assert(param != NULL);
     
     int num_edges = edges.size();
     real total_loss = 0;
     for (size_t i = 0; i < num_edges; ++ i) {
+        param->src.push_back(dotprod_param->src[i]);
         for (int j = 0; j < 1 + option_->negative_num; ++ j) {
             size_t idx = i * (1 + option_->negative_num) + j;
             real ip = dotprod_result->scale[idx];
@@ -181,17 +181,11 @@ AdjustParam* Model::GetAdjustParam(std::vector<Edge>& edges, real lr,
             real weight = edges[i].weight;
             total_loss += j == 0 ? -weight * log(sigmoid) : -weight * log(1 - sigmoid);
             real scale = lr * weight * ((j == 0) - sigmoid);
-            param->src.push_back(dotprod_param->src[idx]);
             param->dst.push_back(dotprod_param->dst[idx]);
             param->scale.push_back(scale);
         }
     }
     loss = total_loss / num_edges / (1 + option_->negative_num);
-
-    param->src_unique = param->src;
-    param->dst_unique = param->dst;
-    SortEraseDuplicate(param->src_unique);
-    SortEraseDuplicate(param->dst_unique);
 
     return param;
 }

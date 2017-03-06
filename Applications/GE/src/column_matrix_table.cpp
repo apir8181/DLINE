@@ -9,8 +9,6 @@
 
 namespace graphembedding {
 
-enum class Op { GET, DOTPROD, ADJUST };
-
 template<typename T>
 ColumnMatrixWorkerTable<T>::ColumnMatrixWorkerTable(
         const ColumnMatrixTableOption<T>& option) : WorkerTable() {
@@ -26,101 +24,33 @@ ColumnMatrixWorkerTable<T>::~ColumnMatrixWorkerTable() {}
 template<typename T>
 DotProdResult* ColumnMatrixWorkerTable<T>::DotProd(DotProdParam* param) {
     std::lock_guard<std::mutex> lock(mutex_);
-    assert(param->src.size() == param->dst.size());
-    int num_edges = param->src.size();
-
-    Blob blob(sizeof(integer) * 2 + num_edges * sizeof(integer) * 2);
-    char* data = blob.data();
+    Blob blob = param->ToBlob();
     dotprod_result_ = new DotProdResult();
-    dotprod_result_->scale.resize(num_edges, 0);
-
-    reinterpret_cast<integer*>(data)[0] = (int)Op::DOTPROD;
-    data += sizeof(integer);
-
-    reinterpret_cast<integer*>(data)[0] = num_edges;
-    data += sizeof(integer);
-
-    memcpy(data, param->src.data(), num_edges * sizeof(integer));
-    data += num_edges * sizeof(integer);
-
-    memcpy(data, param->dst.data(), num_edges * sizeof(integer));
-
+    dotprod_result_->scale.resize(param->dst.size(), 0);
     WorkerTable::Get(blob, NULL);
     multiverso::Log::Debug("[DotProd] Rank %d (Worker = %d), num_edges = %d\n",
-        rank_, worker_id_, num_edges);
+        rank_, worker_id_, param->dst.size());
     return dotprod_result_;
 }
 
 template<typename T>
 void ColumnMatrixWorkerTable<T>::Adjust(AdjustParam* param) {
     std::lock_guard<std::mutex> lock(mutex_);
-    assert(param->src.size() == param->dst.size() && 
-            param->src.size() == param->scale.size());
-    int num_edges = param->src.size();
-    int num_src_unique = param->src_unique.size();
-    int num_dst_unique = param->dst_unique.size();
-
-    size_t blob_size = sizeof(integer) * 4;
-    blob_size += (2 * sizeof(integer) + sizeof(real)) * num_edges;
-    blob_size += sizeof(integer) * (num_src_unique + num_dst_unique);
-    Blob blob(blob_size);
-    char* data = blob.data();
-
-    reinterpret_cast<integer*>(data)[0] = (int)Op::ADJUST;
-    data += sizeof(integer);
-
-    reinterpret_cast<integer*>(data)[0] = num_edges;
-    data += sizeof(integer);
-
-    reinterpret_cast<integer*>(data)[0] = num_src_unique;
-    data += sizeof(integer);
-
-    reinterpret_cast<integer*>(data)[0] = num_dst_unique;
-    data += sizeof(integer);
-
-    memcpy(data, param->src.data(), num_edges * sizeof(integer));
-    data += num_edges * sizeof(integer);
-
-    memcpy(data, param->dst.data(), num_edges * sizeof(integer));
-    data += num_edges * sizeof(integer);
-
-    memcpy(data, param->scale.data(), num_edges * sizeof(real));
-    data += num_edges * sizeof(real);
-
-    memcpy(data, param->src_unique.data(), num_src_unique * sizeof(integer));
-    data += num_src_unique * sizeof(integer);
-
-    memcpy(data, param->dst_unique.data(), num_dst_unique * sizeof(integer));
-    data += num_dst_unique * sizeof(integer);
-
+    Blob blob = param->ToBlob();
     WorkerTable::Get(blob, NULL);
     multiverso::Log::Debug("[Adjust] Rank %d (Worker = %d), num_edges = %d\n",
-        rank_, worker_id_, num_edges);
+        rank_, worker_id_, param->dst.size());
 }
 
 template<typename T>
 GetResult* ColumnMatrixWorkerTable<T>::Get(GetParam* param) {
     std::lock_guard<std::mutex> lock(mutex_);
-    int num_nodes = param->src.size();
-
+    Blob blob = param->ToBlob(); 
     get_result_ = new GetResult();
-    get_result_->W.resize(size_t(num_nodes) * num_cols_);
-
-    Blob blob( sizeof(integer) * 2 + num_nodes * sizeof(integer));
-    char* data = blob.data();
-
-    reinterpret_cast<integer*>(data)[0] = (int)Op::GET;
-    data += sizeof(integer);
-
-    reinterpret_cast<integer*>(data)[0] = num_nodes;
-    data += sizeof(integer);
-
-    memcpy(data, param->src.data(), num_nodes * sizeof(integer));
-    
+    get_result_->W.resize(param->src.size() * num_cols_);
     WorkerTable::Get(blob, NULL);
     multiverso::Log::Debug("[Get] Rank %d (Worker = %d), num_nodes = %d\n",
-        rank_, worker_id_, num_nodes);
-
+        rank_, worker_id_, param->src.size());
     return get_result_;
 }
 
@@ -140,38 +70,31 @@ template <typename T>
 void ColumnMatrixWorkerTable<T>::ProcessReplyGet(std::vector<Blob>& reply_data) {
     assert(reply_data.size() == 1);
     Blob blob = reply_data[0];
-    char* data = blob.data();
-
-    int type = reinterpret_cast<int*>(data)[0];
-    data += sizeof(integer);
-
-    int num_edges = reinterpret_cast<int*>(data)[0];
-    data += sizeof(integer);
-
-    if (type == (int)Op::DOTPROD) {
-        real* scale = reinterpret_cast<real*>(data);
-        for (int i = 0; i < num_edges; ++ i) dotprod_result_->scale[i] += scale[i]; 
-        multiverso::Log::Debug("[ProcessDotProd] Rank %d (Worker %d), "
-            "#num_edges = %lld\n", rank_, worker_id_, num_edges);
-    } else if (type == (int)Op::ADJUST) {
-        multiverso::Log::Debug("[ProcessAdjust] Rank %d (Worker %d), "
-            "#num_edges = %lld\n", rank_, worker_id_, num_edges);
-    } else if (type == (int)Op::GET) {
-        int server_offset = reinterpret_cast<int*>(data)[0];
-        data += sizeof(integer);
-
-        int server_cols = reinterpret_cast<int*>(data)[0];
-        data += sizeof(integer);
-
-        real* W1 = reinterpret_cast<real*>(get_result_->W.data());
-        real* W2 = reinterpret_cast<real*>(data);
-        for (size_t i = 0; i < num_edges; ++ i) {
-            size_t src_offset = i * server_cols;
-            size_t dst_offset = i * num_cols_ + server_offset;
-            memcpy(W1 + dst_offset, W2 + src_offset, server_cols * sizeof(real));
+    Op type = GetOpType(blob);
+    if (type == Op::DOTPROD) {
+        DotProdResult* result = DotProdResult::FromBlob(blob);
+        int num_elems = result->scale.size();
+        for (int i = 0; i < num_elems; ++ i) {
+            dotprod_result_->scale[i] += result->scale[i]; 
         }
+        delete result;
+        multiverso::Log::Debug("[ProcessDotProd] Rank %d (Worker %d), "
+            "#num_edges = %d\n", rank_, worker_id_, num_elems);
+    } else if (type == Op::ADJUST) {
+        multiverso::Log::Debug("[ProcessAdjust] Rank %d (Worker %d)\n", rank_, worker_id_);
+    } else if (type == Op::GET) {
+        GetResult* result = GetResult::FromBlob(blob);
+        int num_elems = result->W.size();
+        int num_rows = num_elems / result->cols_own;
+        for (size_t i = 0; i < num_rows; ++ i) {
+            size_t src_offset = i * result->cols_offset;
+            size_t dst_offset = i * num_cols_ + result->cols_offset;
+            memcpy(get_result_->W.data() + dst_offset, result->W.data() + src_offset, 
+                   result->cols_own * sizeof(real));
+        }
+        delete result;
         multiverso::Log::Debug("[ProcessGet] Rank %d (Worker %d), "
-            "#num_nodes = %lld\n", rank_, worker_id_, num_edges);
+            "#num_nodes = %lld\n", rank_, worker_id_, num_rows);
     }
 }
 
@@ -220,72 +143,61 @@ void ColumnMatrixServerTable<T>::ProcessGet(
         const std::vector<Blob>& kv,
         std::vector<Blob>* result) {
     assert(kv.size() == 1);
-    char* data = kv[0].data();
+    Blob blob = kv[0];
+    Op type = GetOpType(blob); 
 
-    int type = reinterpret_cast<integer*>(data)[0];
-    data += sizeof(integer);
+    if (type == Op::DOTPROD) {
+        DotProdParam* param = DotProdParam::FromBlob(blob);
+        DotProdResult ret;
 
-    int num_edges = reinterpret_cast<integer*>(data)[0];
-    data += sizeof(integer);
+        int src_num = param->src.size();
+        int dst_num = param->dst.size();
+        int K = param->K;
+        ret.scale.resize(dst_num);
 
-    if (type == (int)Op::DOTPROD) {
-        integer* src = reinterpret_cast<integer*>(data);
-        data += num_edges * sizeof(integer);
-        integer* dst = reinterpret_cast<integer*>(data);
-        
-        result->push_back(Blob(2 * sizeof(integer) + num_edges * sizeof(real)));
-        char* result_data = result->at(0).data();
-
-        reinterpret_cast<integer*>(result_data)[0] = (int)Op::DOTPROD;
-        result_data += sizeof(integer);
-
-        reinterpret_cast<integer*>(result_data)[0] = num_edges;
-        result_data += sizeof(integer);
-
-        real* scale = reinterpret_cast<real*>(result_data);
         #pragma omp parallel for num_threads(num_threads_)
-        for (int i = 0; i < num_edges; ++ i) {
-            scale[i] = 0;
-            size_t src_offset = size_t(src[i]) * num_cols_local_;
-            size_t dst_offset = size_t(dst[i]) * num_cols_local_;
-            for (int j = 0; j < num_cols_local_; ++ j) {
-               scale[i] += W_IN_[src_offset + j] * W_OUT_[dst_offset + j];
+        for (int i = 0; i < src_num; ++ i) {
+            size_t src_offset = size_t(param->src[i]) * num_cols_local_;
+            for (int k = 0; k < K + 1; ++ k) {
+                int idx = i * (K + 1) + k;
+                size_t dst_offset = size_t(param->dst[idx]) * num_cols_local_;
+                real ip = 0;
+                for (int j = 0; j < num_cols_local_; ++ j) {
+                    ip += W_IN_[src_offset + j] * W_OUT_[dst_offset + j];
+                }
+                ret.scale[idx] = ip;
             }
         }
+
+        delete param;
+        result->push_back(ret.ToBlob());
         multiverso::Log::Debug("[ProcessDotProd] Rank %d (Server %d), #num_edges=%d\n",
-            rank_, server_id_, num_edges);
-    } else if (type == (int)Op::ADJUST) {
-        int num_src_unique = reinterpret_cast<integer*>(data)[0];
-        data += sizeof(int);
-
-        int num_dst_unique = reinterpret_cast<integer*>(data)[0];
-        data += sizeof(int);
-
-        integer* src = reinterpret_cast<integer*>(data);
-        data += num_edges * sizeof(integer);
-
-        integer* dst = reinterpret_cast<integer*>(data);
-        data += num_edges * sizeof(integer);
-
-        real* scale = reinterpret_cast<real*>(data);
-        data += num_edges * sizeof(real);
-
-        integer* src_unique = reinterpret_cast<integer*>(data);
-        data += num_src_unique * sizeof(integer);
-
-        integer* dst_unique = reinterpret_cast<integer*>(data);
-        data += num_dst_unique * sizeof(integer);
+            rank_, server_id_, dst_num);
+    } else if (type == Op::ADJUST) {
+        AdjustParam* param = AdjustParam::FromBlob(blob);
+        int src_nodes = param->src.size();
+        int dst_nodes = param->dst.size();
+        int K = param->K;
 
         #pragma omp parallel for num_threads(num_threads_)
-        for (int i = 0; i < num_edges; ++ i) {
-            size_t src_offset = size_t(src[i]) * num_cols_local_;
-            size_t dst_offset = size_t(dst[i]) * num_cols_local_;
-            for (int j = 0; j < num_cols_local_; ++ j) {
-                DW_IN_[src_offset + j] += scale[i] * W_OUT_[dst_offset + j];
-                DW_OUT_[dst_offset + j] += scale[i] * W_IN_[src_offset + j];
+        for (int i = 0; i < src_nodes; ++ i) {
+            size_t src_offset = size_t(param->src[i]) * num_cols_local_;
+            for (int k = 0; k < K + 1; ++ k) {
+                int idx = i * (K + 1) + k; 
+                size_t dst_offset = size_t(param->dst[idx]) * num_cols_local_;
+                for (int j = 0; j < num_cols_local_; ++ j) {
+                    DW_IN_[src_offset + j] += param->scale[i] * W_OUT_[dst_offset + j];
+                    DW_OUT_[dst_offset + j] += param->scale[i] * W_IN_[src_offset + j];
+                }
             }
         }
 
+        std::vector<integer> src_unique = param->src;
+        std::vector<integer> dst_unique = param->dst;
+        SortEraseDuplicate(src_unique);
+        SortEraseDuplicate(dst_unique);
+
+        int num_src_unique = src_unique.size();
         #pragma omp parallel for num_threads(num_threads_)
         for (int i = 0; i < num_src_unique; ++ i) {
             size_t offset = src_unique[i] * size_t(num_cols_local_);
@@ -295,6 +207,7 @@ void ColumnMatrixServerTable<T>::ProcessGet(
             }
         }
 
+        int num_dst_unique = dst_unique.size();
         #pragma omp parallel for num_threads(num_threads_)
         for (int i = 0; i < num_dst_unique; ++ i) {
             size_t offset = dst_unique[i] * size_t(num_cols_local_);
@@ -304,37 +217,32 @@ void ColumnMatrixServerTable<T>::ProcessGet(
             }
         }
 
-        result->push_back(Blob(2 * sizeof(integer)));
-        void* result_data = result->at(0).data();
-        reinterpret_cast<integer*>(result_data)[0] = (int)Op::ADJUST;
-        reinterpret_cast<integer*>(result_data)[1] = num_edges;
+        Blob blob(sizeof(int));
+        reinterpret_cast<int*>(blob.data())[0] = (int)Op::ADJUST;
+        result->push_back(blob);
+        delete param;
         multiverso::Log::Debug("[ProcessAdjust] Rank %d (Server %d), #num_edges=%d\n",
-            rank_, server_id_, num_edges);
-    } else if (type == (int)Op::GET) {
-        result->push_back(Blob(4 * sizeof(integer) + sizeof(real) * num_edges * num_cols_local_));
-        char* result_data = result->at(0).data();
-        
-        reinterpret_cast<integer*>(result_data)[0] = (int)Op::GET;
-        result_data += sizeof(integer);
+            rank_, server_id_, dst_nodes);
+    } else if (type == Op::GET) {
+        GetParam* param = GetParam::FromBlob(blob); 
+        int num_nodes = param->src.size(); 
 
-        reinterpret_cast<integer*>(result_data)[0] = num_edges;
-        result_data += sizeof(integer);
+        GetResult ret;
+        ret.server_id = server_id_;
+        ret.cols_own = num_cols_local_;
+        ret.cols_offset = offset_;
+        ret.W.resize(num_nodes * num_cols_local_);
 
-        reinterpret_cast<integer*>(result_data)[0] = offset_;
-        result_data += sizeof(integer);
-
-        reinterpret_cast<integer*>(result_data)[0] = num_cols_local_;
-        result_data += sizeof(integer);
-
-        integer* src = reinterpret_cast<integer*>(data);
-        real* W_dst = reinterpret_cast<real*>(result_data);
-        real* W_src = reinterpret_cast<real*>(W_IN_.data());
         #pragma omp parallel for num_threads(num_threads_)
-        for (size_t i = 0; i < num_edges; ++ i) {
+        for (size_t i = 0; i < num_nodes; ++ i) {
             size_t dst_offset = i * num_cols_local_;
-            size_t src_offset = src[i] * num_cols_local_;
-            memcpy(W_dst + dst_offset, W_src + src_offset, num_cols_local_ * sizeof(real));
+            size_t src_offset = param->src[i] * num_cols_local_;
+            memcpy(ret.W.data() + dst_offset, W_IN_.data() + src_offset, 
+                    num_cols_local_ * sizeof(real));
         }
+
+        result->push_back(ret.ToBlob());
+        delete param;
     }
 }
 

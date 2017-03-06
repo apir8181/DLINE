@@ -6,33 +6,9 @@
 #include <multiverso/table_interface.h>
 #include <unordered_set>
 #include "constant.h"
+#include "param.h"
 
 namespace graphembedding {
-
-struct DotProdParam {
-    std::vector<integer> src;
-    std::vector<integer> dst;
-};
-
-struct DotProdResult {
-    std::vector<real> scale;
-};
-
-struct AdjustParam {
-    std::vector<integer> src;
-    std::vector<integer> dst;
-    std::vector<real> scale;
-    std::vector<integer> src_unique;
-    std::vector<integer> dst_unique;
-};
-
-struct GetParam {
-    std::vector<integer> src;
-};
-
-struct GetResult {
-    std::vector<real> W;
-};
 
 template<typename T>
 struct ColumnMatrixTableOption;
