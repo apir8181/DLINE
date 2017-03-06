@@ -20,7 +20,7 @@ multiverso::Blob DotProdParam::ToBlob() {
                        src_nodes * sizeof(integer) + \
                        dst_nodes * sizeof(integer);
     multiverso::Blob blob(blob_size);
-    char* data = reinterpret_cast<char*>(blob.data());
+    char* data = blob.data();
 
     reinterpret_cast<int*>(data)[0] = (int)Op::DOTPROD;
     data += sizeof(int);
@@ -42,7 +42,7 @@ multiverso::Blob DotProdParam::ToBlob() {
 
 DotProdParam* DotProdParam::FromBlob(const multiverso::Blob& blob) {
     DotProdParam* param = new DotProdParam();
-    char* blob_data = reinterpret_cast<char*>(blob.data());
+    char* blob_data = blob.data();
 
     assert(reinterpret_cast<int*>(blob_data)[0] == (int)Op::DOTPROD);
     blob_data += sizeof(int);
@@ -69,7 +69,7 @@ multiverso::Blob DotProdResult::ToBlob() {
     int num_pairs = scale.size();
     size_t blob_size = 2 * sizeof(int) + num_pairs * sizeof(real);
     multiverso::Blob blob(blob_size);
-    char* blob_data = reinterpret_cast<char*>(blob.data());
+    char* blob_data = blob.data();
     
     reinterpret_cast<int*>(blob_data)[0] = (int)Op::DOTPROD;
     blob_data += sizeof(int);
@@ -87,10 +87,10 @@ DotProdResult* DotProdResult::FromBlob(const multiverso::Blob& blob) {
     DotProdResult* result = new DotProdResult();
     char* blob_data = blob.data();
 
-    assert(reinterpret_cast<int*>(blob.data())[0] == (int)Op::DOTPROD);
+    assert(reinterpret_cast<int*>(blob_data)[0] == (int)Op::DOTPROD);
     blob_data += sizeof(int);
 
-    int num_pairs = reinterpret_cast<int*>(blob.data())[0];
+    int num_pairs = reinterpret_cast<int*>(blob_data)[0];
     blob_data += sizeof(int);
 
     result->scale.resize(num_pairs);
@@ -137,7 +137,7 @@ multiverso::Blob AdjustParam::ToBlob() {
 
 AdjustParam* AdjustParam::FromBlob(const multiverso::Blob& blob) {
     AdjustParam* param = new AdjustParam();
-    char* blob_data = reinterpret_cast<char*>(blob.data());
+    char* blob_data = blob.data();
 
     assert(reinterpret_cast<int*>(blob_data)[0] == (int)Op::ADJUST);
     blob_data += sizeof(int);
@@ -169,7 +169,7 @@ multiverso::Blob GetParam::ToBlob() {
     
     size_t blob_size = 2 * sizeof(int) + num_nodes * sizeof(integer);
     multiverso::Blob blob(blob_size);
-    char* blob_data = reinterpret_cast<char*>(blob.data());
+    char* blob_data = blob.data();
 
     reinterpret_cast<int*>(blob_data)[0] = (int)Op::GET;
     blob_data += sizeof(int);
@@ -185,7 +185,7 @@ multiverso::Blob GetParam::ToBlob() {
 
 GetParam* GetParam::FromBlob(const multiverso::Blob& blob) {
     GetParam* param = new GetParam();
-    char* blob_data = reinterpret_cast<char*>(blob.data());
+    char* blob_data = blob.data();
     
     assert(reinterpret_cast<int*>(blob_data)[0] == (int)Op::GET);
     blob_data += sizeof(int);
@@ -205,7 +205,7 @@ multiverso::Blob GetResult::ToBlob() {
     size_t blob_size = 5 * sizeof(int) + num_elems * sizeof(real);
     
     multiverso::Blob blob(blob_size);
-    char* blob_data = reinterpret_cast<char*>(blob.data());
+    char* blob_data = blob.data();
 
     reinterpret_cast<int*>(blob_data)[0] = (int)Op::GET;
     blob_data += sizeof(int);
@@ -230,7 +230,7 @@ multiverso::Blob GetResult::ToBlob() {
 
 GetResult* GetResult::FromBlob(const multiverso::Blob& blob) {
     GetResult* result = new GetResult();
-    char* blob_data = reinterpret_cast<char*>(blob.data());
+    char* blob_data = blob.data();
     
     assert(reinterpret_cast<int*>(blob_data)[0] == (int)Op::GET);
     blob_data += sizeof(int);
